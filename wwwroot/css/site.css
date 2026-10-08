@@ -38,6 +38,20 @@ a, .btn-link {
 .worklist-section { margin-top: .5rem; }
 .workflow-number { min-width: 6.5rem; width: 7rem; }
 .weight-inputs { display: flex; gap: .4rem; }
+.auth-user { color: #19313b; font-weight: 700; margin-right: .5rem; }
+
+.account-body { align-items: center; background: #eef3f1; display: flex; justify-content: center; min-height: 100vh; padding: 2rem 1rem; }
+.account-card { background: #fff; border: 1px solid #dce4e7; border-radius: 4px; box-shadow: 0 3px 16px rgba(25, 49, 59, .1); max-width: 26rem; padding: 2rem; width: 100%; }
+.account-title { color: #19313b; font-size: 1.5rem; font-weight: 700; margin-bottom: .75rem; }
+.account-intro { color: #68737d; font-size: .9rem; margin-bottom: 1.25rem; }
+.account-secondary-link { display: inline-block; font-size: .85rem; margin-top: 1rem; }
+.account-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); margin-bottom: 1rem; }
+.account-grid label { display: block; }
+.account-grid label > span { color: #68737d; display: block; font-size: .8rem; font-weight: 700; margin-bottom: .35rem; text-transform: uppercase; }
+.account-checkbox { align-items: center; display: flex; gap: .5rem; }
+.account-checkbox > span { color: #19313b; font-size: .9rem; margin: 0; text-transform: none; }
+.account-hint { color: #68737d; font-size: .82rem; margin-bottom: 1rem; }
+.account-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .starter-link { display: none; }
 
 .eyebrow {

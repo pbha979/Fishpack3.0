@@ -1,0 +1,18 @@
+@page
+@model AccessDeniedModel
+@{
+    ViewData["Title"] = "Ingen tilgang";
+    Layout = "_AccountLayout";
+}
+
+<div class="alert alert-warning" role="alert">
+    Brukerkontoen din har ikke tilgang til denne delen av FishPack.
+</div>
+
+<p class="account-intro">
+    Du er logget inn som <strong>@Model.DisplayName</strong> med rollen
+    <strong>@Model.RoleDisplayName</strong>. Kontakt en administrator hvis du trenger utvidet tilgang.
+</p>
+
+<a class="btn btn-primary w-100" href="~/">Tilbake til FishPack</a>
+<a class="account-secondary-link" href="~/Account/Logout">Logg ut</a>

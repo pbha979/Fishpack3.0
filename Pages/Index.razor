@@ -1,6 +1,8 @@
 ﻿@page "/"
 @using FishPack3._0.Data
+@attribute [Authorize(Policy = AuthorizationPolicies.Operations)]
 @inject FishPackDataService DataService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Operations dashboard</PageTitle>
 
@@ -11,8 +13,10 @@
 		<p class="dashboard-intro">Monitor flights, ULD preparation, weighing and carriage readiness.</p>
 	</div>
 	<div class="dashboard-actions">
-		<button class="btn btn-primary" @onclick="CreateFromOtmAsync" disabled="@isLoading || isAutomating">@(isAutomating ? "Creating..." : "Create from OTM")</button>
-		<button class="btn btn-outline-secondary" @onclick="RefreshAsync" disabled="@isLoading || isAutomating">@(isLoading ? "Refreshing..." : "Refresh")</button>
+		<AuthorizeView Policy="@AuthorizationPolicies.Supervision">
+			<button class="btn btn-primary" @onclick="CreateFromOtmAsync" disabled="@(isLoading || isAutomating)">@(isAutomating ? "Creating..." : "Create from OTM")</button>
+		</AuthorizeView>
+		<button class="btn btn-outline-secondary" @onclick="RefreshAsync" disabled="@(isLoading || isAutomating)">@(isLoading ? "Refreshing..." : "Refresh")</button>
 	</div>
 </div>
 
@@ -139,7 +143,8 @@ else if (dashboard is not null)
 
 		try
 		{
-			var result = await DataService.CreateMissingFromOtmAsync("Web user");
+			var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+			var result = await DataService.CreateMissingFromOtmAsync(authenticationState.User.GetDisplayName());
 			automationMessage = $"Created {result.FlightsCreated} flights, {result.AwbsCreated} AWBs and {result.UldsCreated} ULDs. Skipped {result.ExistingAwbsSkipped} existing AWBs and {result.RowsSkippedWithoutAwb} OTM rows without an AWB.";
 			await LoadDashboardAsync();
 		}

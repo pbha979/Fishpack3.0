@@ -1,0 +1,14 @@
+@page
+@model LogoutModel
+@{
+    ViewData["Title"] = "Logg ut";
+    Layout = "_AccountLayout";
+}
+
+<p class="account-intro">Vil du logge ut av FishPack?</p>
+
+<form method="post">
+    <button type="submit" class="btn btn-primary w-100">Logg ut</button>
+</form>
+
+<a class="account-secondary-link" href="~/">Avbryt</a>

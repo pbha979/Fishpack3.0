@@ -1,0 +1,27 @@
+@page
+@model LoginModel
+@{
+    ViewData["Title"] = "Logg inn";
+    Layout = "_AccountLayout";
+}
+
+<p class="account-intro">Logg inn med brukerkontoen du har fått av en administrator.</p>
+
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
+}
+
+<form method="post">
+    <div class="mb-3">
+        <label asp-for="Input.UserName" class="form-label">Brukernavn</label>
+        <input asp-for="Input.UserName" class="form-control" autocomplete="username" autofocus />
+        <span asp-validation-for="Input.UserName" class="validation-message"></span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Input.Password" class="form-label">Passord</label>
+        <input asp-for="Input.Password" class="form-control" autocomplete="current-password" />
+        <span asp-validation-for="Input.Password" class="validation-message"></span>
+    </div>
+    <button type="submit" class="btn btn-primary w-100">Logg inn</button>
+</form>

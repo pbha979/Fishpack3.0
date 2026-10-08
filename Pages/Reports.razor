@@ -1,5 +1,6 @@
 @page "/reports"
 @using FishPack3._0.Data
+@attribute [Authorize(Policy = AuthorizationPolicies.Supervision)]
 @inject FishPackDataService DataService
 
 <PageTitle>Reports</PageTitle>

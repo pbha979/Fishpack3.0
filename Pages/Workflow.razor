@@ -2,6 +2,7 @@
 @page "/weighing"
 @page "/carriage"
 @using FishPack3._0.Data
+@attribute [Authorize(Policy = AuthorizationPolicies.Operations)]
 @inject FishPackDataService DataService
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -143,7 +144,7 @@ else if (items is not null)
         try
         {
             var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var operatorName = authenticationState.User.Identity?.Name;
+            var operatorName = authenticationState.User.GetDisplayName();
             if (string.IsNullOrWhiteSpace(operatorName))
             {
                 throw new InvalidOperationException("The authenticated operator could not be identified.");

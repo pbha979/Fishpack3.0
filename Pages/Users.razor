@@ -1,0 +1,334 @@
+@page "/users"
+@using FishPack3._0.Data
+@attribute [Authorize(Policy = AuthorizationPolicies.UserAdministration)]
+@inject UserService UserStore
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Brukere</PageTitle>
+
+<div class="dashboard-header">
+    <div>
+        <p class="eyebrow">ADMINISTRASJON</p>
+        <h1>Brukere</h1>
+        <p class="dashboard-intro">Opprett brukerkontoer, styr roller og tilbakestill passord.</p>
+    </div>
+    <button class="btn btn-primary" @onclick="ToggleCreateForm" disabled="@isBusy">
+        @(showCreateForm ? "Avbryt" : "Ny bruker")
+    </button>
+</div>
+
+@if (successMessage is not null)
+{
+    <div class="alert alert-success" role="status">@successMessage</div>
+}
+
+@if (errorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+
+@if (showCreateForm)
+{
+    <section class="dashboard-section">
+        <div class="section-heading">
+            <div><p class="eyebrow">NY KONTO</p><h2>Opprett bruker</h2></div>
+        </div>
+        <div class="account-grid">
+            <label>
+                <span>Brukernavn</span>
+                <input class="form-control" @bind="newUserName" placeholder="fornavn.etternavn" />
+            </label>
+            <label>
+                <span>Visningsnavn</span>
+                <input class="form-control" @bind="newDisplayName" placeholder="Fornavn Etternavn" />
+            </label>
+            <label>
+                <span>Rolle</span>
+                <select class="form-select" @bind="newRole">
+                    @foreach (var role in UserRoles.All)
+                    {
+                        <option value="@role">@UserRoles.GetDisplayName(role)</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>Midlertidig passord</span>
+                <input class="form-control" type="password" @bind="newPassword" autocomplete="new-password" />
+            </label>
+        </div>
+        <p class="account-hint">
+            Passordet må ha minst @UserService.MinimumPasswordLength tegn med store bokstaver, små bokstaver og tall.
+            Brukeren må bytte passord ved første innlogging.
+        </p>
+        <button class="btn btn-primary" @onclick="CreateUserAsync" disabled="@isBusy">Opprett bruker</button>
+    </section>
+}
+
+@if (isLoading)
+{
+    <p class="text-muted">Laster brukere...</p>
+}
+else
+{
+    <section class="dashboard-section">
+        <div class="section-heading">
+            <div><p class="eyebrow">KONTOER</p><h2>Registrerte brukere</h2></div>
+            <span class="section-count">@users.Count totalt</span>
+        </div>
+        <div class="table-wrap">
+            <table class="table dashboard-table">
+                <thead>
+                    <tr>
+                        <th>Brukernavn</th><th>Visningsnavn</th><th>Rolle</th><th>Status</th>
+                        <th>Sist innlogget</th><th>Handling</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in users)
+                    {
+                        <tr>
+                            <td class="primary-cell">@user.UserName</td>
+                            <td>@user.DisplayName</td>
+                            <td>@user.RoleDisplayName</td>
+                            <td>
+                                <span class="status-pill @(user.IsActive ? "status-complete" : "status-pending")">
+                                    @(user.IsActive ? "Aktiv" : "Deaktivert")
+                                </span>
+                                @if (user.MustChangePassword)
+                                {
+                                    <span class="status-pill status-pending">Må bytte passord</span>
+                                }
+                                @if (user.IsLockedOut(DateTime.UtcNow))
+                                {
+                                    <span class="status-pill status-pending">Låst</span>
+                                }
+                            </td>
+                            <td>@(user.LastLoginAt?.ToString("dd.MM.yyyy HH:mm") ?? "-")</td>
+                            <td class="account-actions">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => BeginEdit(user)" disabled="@isBusy">Rediger</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => BeginReset(user)" disabled="@isBusy">Nytt passord</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@if (editingUser is not null)
+{
+    <section class="dashboard-section">
+        <div class="section-heading">
+            <div><p class="eyebrow">REDIGER</p><h2>@editingUser.UserName</h2></div>
+        </div>
+        <div class="account-grid">
+            <label>
+                <span>Visningsnavn</span>
+                <input class="form-control" @bind="editDisplayName" />
+            </label>
+            <label>
+                <span>Rolle</span>
+                <select class="form-select" @bind="editRole" disabled="@IsCurrentUser(editingUser)">
+                    @foreach (var role in UserRoles.All)
+                    {
+                        <option value="@role">@UserRoles.GetDisplayName(role)</option>
+                    }
+                </select>
+            </label>
+            <label class="account-checkbox">
+                <input type="checkbox" @bind="editIsActive" disabled="@IsCurrentUser(editingUser)" />
+                <span>Kontoen er aktiv</span>
+            </label>
+        </div>
+        @if (IsCurrentUser(editingUser))
+        {
+            <p class="account-hint">Du kan ikke endre rollen eller deaktivere din egen konto.</p>
+        }
+        <div class="account-actions">
+            <button class="btn btn-primary" @onclick="SaveUserAsync" disabled="@isBusy">Lagre endringer</button>
+            <button class="btn btn-outline-secondary" @onclick="CancelEdit" disabled="@isBusy">Avbryt</button>
+        </div>
+    </section>
+}
+
+@if (resettingUser is not null)
+{
+    <section class="dashboard-section">
+        <div class="section-heading">
+            <div><p class="eyebrow">PASSORD</p><h2>Nytt passord for @resettingUser.UserName</h2></div>
+        </div>
+        <div class="account-grid">
+            <label>
+                <span>Midlertidig passord</span>
+                <input class="form-control" type="password" @bind="resetPassword" autocomplete="new-password" />
+            </label>
+        </div>
+        <p class="account-hint">Brukeren må bytte passordet ved neste innlogging.</p>
+        <div class="account-actions">
+            <button class="btn btn-primary" @onclick="ResetPasswordAsync" disabled="@isBusy">Lagre passord</button>
+            <button class="btn btn-outline-secondary" @onclick="CancelReset" disabled="@isBusy">Avbryt</button>
+        </div>
+    </section>
+}
+
+@code {
+    private IReadOnlyList<ApplicationUser> users = Array.Empty<ApplicationUser>();
+    private string? errorMessage;
+    private string? successMessage;
+    private bool isLoading = true;
+    private bool isBusy;
+    private string currentUserName = string.Empty;
+
+    private bool showCreateForm;
+    private string newUserName = string.Empty;
+    private string newDisplayName = string.Empty;
+    private string newRole = UserRoles.Operator;
+    private string newPassword = string.Empty;
+
+    private ApplicationUser? editingUser;
+    private string editDisplayName = string.Empty;
+    private string editRole = UserRoles.Operator;
+    private bool editIsActive = true;
+
+    private ApplicationUser? resettingUser;
+    private string resetPassword = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUserName = authenticationState.User.Identity?.Name ?? string.Empty;
+        await LoadUsersAsync();
+    }
+
+    private bool IsCurrentUser(ApplicationUser user) =>
+        string.Equals(user.UserName, currentUserName, StringComparison.OrdinalIgnoreCase);
+
+    private async Task LoadUsersAsync()
+    {
+        isLoading = true;
+
+        try
+        {
+            users = await UserStore.GetUsersAsync();
+        }
+        catch (Exception exception)
+        {
+            errorMessage = $"Brukerne kunne ikke lastes: {exception.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ToggleCreateForm()
+    {
+        showCreateForm = !showCreateForm;
+        newUserName = string.Empty;
+        newDisplayName = string.Empty;
+        newRole = UserRoles.Operator;
+        newPassword = string.Empty;
+        ClearMessages();
+    }
+
+    private async Task CreateUserAsync()
+    {
+        await RunAsync(async () =>
+        {
+            var created = await UserStore.CreateUserAsync(
+                newUserName, newDisplayName, newRole, newPassword, currentUserName);
+
+            successMessage = $"Brukeren '{created.UserName}' ble opprettet.";
+            showCreateForm = false;
+            newUserName = string.Empty;
+            newDisplayName = string.Empty;
+            newPassword = string.Empty;
+        });
+    }
+
+    private void BeginEdit(ApplicationUser user)
+    {
+        editingUser = user;
+        editDisplayName = user.DisplayName;
+        editRole = user.Role;
+        editIsActive = user.IsActive;
+        resettingUser = null;
+        ClearMessages();
+    }
+
+    private void CancelEdit() => editingUser = null;
+
+    private async Task SaveUserAsync()
+    {
+        if (editingUser is null)
+        {
+            return;
+        }
+
+        var target = editingUser;
+        var role = IsCurrentUser(target) ? target.Role : editRole;
+        var isActive = IsCurrentUser(target) || editIsActive;
+
+        await RunAsync(async () =>
+        {
+            await UserStore.UpdateUserAsync(target.UserId, editDisplayName, role, isActive, currentUserName);
+            successMessage = $"Brukeren '{target.UserName}' ble oppdatert.";
+            editingUser = null;
+        });
+    }
+
+    private void BeginReset(ApplicationUser user)
+    {
+        resettingUser = user;
+        resetPassword = string.Empty;
+        editingUser = null;
+        ClearMessages();
+    }
+
+    private void CancelReset() => resettingUser = null;
+
+    private async Task ResetPasswordAsync()
+    {
+        if (resettingUser is null)
+        {
+            return;
+        }
+
+        var target = resettingUser;
+
+        await RunAsync(async () =>
+        {
+            await UserStore.ResetPasswordAsync(target.UserId, resetPassword, currentUserName);
+            successMessage = $"Passordet for '{target.UserName}' ble tilbakestilt.";
+            resettingUser = null;
+            resetPassword = string.Empty;
+        });
+    }
+
+    private async Task RunAsync(Func<Task> operation)
+    {
+        isBusy = true;
+        ClearMessages();
+
+        try
+        {
+            await operation();
+            await LoadUsersAsync();
+        }
+        catch (Exception exception)
+        {
+            errorMessage = exception.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private void ClearMessages()
+    {
+        errorMessage = null;
+        successMessage = null;
+    }
+}

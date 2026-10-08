@@ -1,5 +1,6 @@
 @page "/flights"
 @using FishPack3._0.Data
+@attribute [Authorize(Policy = AuthorizationPolicies.Operations)]
 @inject FishPackDataService DataService
 
 <PageTitle>Flight workspace</PageTitle>

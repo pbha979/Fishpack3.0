@@ -22,8 +22,13 @@
         <div class="nav-item px-3"><NavLink class="nav-link" href="buildup"><span class="oi oi-wrench" aria-hidden="true"></span> Build-up</NavLink></div>
         <div class="nav-item px-3"><NavLink class="nav-link" href="weighing"><span class="oi oi-dashboard" aria-hidden="true"></span> Weighing</NavLink></div>
         <div class="nav-item px-3"><NavLink class="nav-link" href="carriage"><span class="oi oi-transfer" aria-hidden="true"></span> Carriage</NavLink></div>
-        <div class="nav-item px-3"><NavLink class="nav-link" href="reports"><span class="oi oi-bar-chart" aria-hidden="true"></span> Reports</NavLink></div>
-        <div class="nav-item px-3"><NavLink class="nav-link" href="otm"><span class="oi oi-cloud-download" aria-hidden="true"></span> OTM staging</NavLink></div>
+        <AuthorizeView Policy="@AuthorizationPolicies.Supervision">
+            <div class="nav-item px-3"><NavLink class="nav-link" href="reports"><span class="oi oi-bar-chart" aria-hidden="true"></span> Reports</NavLink></div>
+            <div class="nav-item px-3"><NavLink class="nav-link" href="otm"><span class="oi oi-cloud-download" aria-hidden="true"></span> OTM staging</NavLink></div>
+        </AuthorizeView>
+        <AuthorizeView Policy="@AuthorizationPolicies.UserAdministration">
+            <div class="nav-item px-3"><NavLink class="nav-link" href="users"><span class="oi oi-people" aria-hidden="true"></span> Brukere</NavLink></div>
+        </AuthorizeView>
         <div class="nav-item px-3 starter-link">
             <NavLink class="nav-link" href="counter">
                 <span class="oi oi-plus" aria-hidden="true"></span> Counter
