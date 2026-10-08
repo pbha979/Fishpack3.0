@@ -4,6 +4,7 @@
 @using FishPack3._0.Data
 @inject FishPackDataService DataService
 @inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 @{
     var mode = Navigation.Uri.Contains("/weighing") ? "weighing" : Navigation.Uri.Contains("/carriage") ? "carriage" : "buildup";
@@ -24,6 +25,11 @@
     <a class="@(mode == "carriage" ? "active" : "")" href="/carriage">Carriage</a>
 </div>
 
+@if (successMessage is not null)
+{
+    <div class="alert alert-success" role="status">@successMessage</div>
+}
+
 @if (isLoading)
 {
     <p class="text-muted">Loading worklist...</p>
@@ -36,10 +42,40 @@ else if (items is not null)
 {
     <section class="dashboard-section worklist-section">
         <div class="section-heading"><div><p class="eyebrow">CURRENT QUEUE</p><h2>@items.Count ULDs</h2></div><span class="section-count">Updated @DateTime.Now.ToString("HH:mm")</span></div>
-        <div class="table-wrap"><table class="table dashboard-table"><thead><tr><th>ULD</th><th>Flight</th><th>Destination</th><th>Pallet</th><th>Boxes</th><th>Weight</th><th>Status</th></tr></thead><tbody>
+        <div class="table-wrap"><table class="table dashboard-table"><thead><tr><th>ULD</th><th>Flight</th><th>Destination</th><th>Pallet</th><th>Boxes</th><th>Weight</th><th>Status</th><th>Action</th></tr></thead><tbody>
             @foreach (var item in items)
             {
-                <tr><td class="primary-cell">@item.PhysicalId</td><td>@item.Flight</td><td>@item.Destination</td><td>@item.PalletType</td><td>@item.TotalBoxCount?.ToString("0")</td><td>@item.WeightTotal?.ToString("0.0") kg</td><td><span class="status-pill @GetStatusClass(item)">@GetStatus(item)</span></td></tr>
+                <tr>
+                    <td class="primary-cell">@item.PhysicalId</td>
+                    <td>@item.Flight</td>
+                    <td>@item.Destination</td>
+                    <td>@item.PalletType</td>
+                    <td>
+                        @if (stage == UldWorkflowStage.BuildUp)
+                        {
+                            <input class="form-control workflow-number" type="number" min="0" step="1" aria-label="Box count for @item.PhysicalId" @bind="boxCounts[item.UldId]" />
+                        }
+                        else
+                        {
+                            @item.TotalBoxCount?.ToString("0")
+                        }
+                    </td>
+                    <td>
+                        @if (stage == UldWorkflowStage.Weighing)
+                        {
+                            <div class="weight-inputs">
+                                <input class="form-control workflow-number" type="number" min="0.1" step="0.1" placeholder="Gross" aria-label="Gross weight for @item.PhysicalId" @bind="grossWeights[item.UldId]" />
+                                <input class="form-control workflow-number" type="number" min="0" step="0.1" placeholder="Tare" aria-label="Tare weight for @item.PhysicalId" @bind="tareWeights[item.UldId]" />
+                            </div>
+                        }
+                        else
+                        {
+                            @(item.WeightTotal?.ToString("0.0") ?? "-") <text>kg</text>
+                        }
+                    </td>
+                    <td><span class="status-pill @GetStatusClass(item)">@GetStatus(item)</span></td>
+                    <td><button class="btn btn-sm btn-primary" disabled="@(activeUldId is not null)" @onclick="() => CompleteStageAsync(item)">@(activeUldId == item.UldId ? "Saving..." : ActionLabel)</button></td>
+                </tr>
             }
         </tbody></table></div>
     </section>
@@ -48,21 +84,104 @@ else if (items is not null)
 @code {
     private IReadOnlyList<UldOperationsSummary>? items;
     private string? errorMessage;
+    private string? successMessage;
     private bool isLoading = true;
+    private int? activeUldId;
+    private UldWorkflowStage stage;
+    private readonly Dictionary<int, double?> boxCounts = new();
+    private readonly Dictionary<int, double?> grossWeights = new();
+    private readonly Dictionary<int, double?> tareWeights = new();
 
-    protected override async Task OnInitializedAsync()
+    private string ActionLabel => stage switch
     {
-        try
-        {
-            var dashboard = await DataService.GetDashboardAsync();
-            var mode = Navigation.Uri.Contains("/weighing") ? "weighing" : Navigation.Uri.Contains("/carriage") ? "carriage" : "buildup";
-            items = mode == "weighing" ? dashboard.ReadyForWeighing.Select(ToOperations).ToList() : mode == "carriage" ? dashboard.ReadyForCarriage.Select(ToOperations).ToList() : dashboard.BuildUps.Select(item => new UldOperationsSummary(item.UldId, item.Flight, item.PhysicalId, item.Awb, item.Destination, item.PalletType, string.Empty, null, null, item.TotalBoxCount, item.BuildComplete, false, false, false)).ToList();
-        }
-        catch (Exception exception) { errorMessage = $"The worklist could not be loaded: {exception.Message}"; }
-        finally { isLoading = false; }
+        UldWorkflowStage.BuildUp => "Complete build-up",
+        UldWorkflowStage.Weighing => "Complete weighing",
+        _ => "Ready for carriage"
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        stage = Navigation.Uri.Contains("/weighing")
+            ? UldWorkflowStage.Weighing
+            : Navigation.Uri.Contains("/carriage")
+                ? UldWorkflowStage.Carriage
+                : UldWorkflowStage.BuildUp;
+        await LoadItemsAsync();
     }
 
-    private static UldOperationsSummary ToOperations(UldReadinessSummary item) => new(item.UldId, item.Flight, item.PhysicalId, string.Empty, string.Empty, item.PalletType, string.Empty, item.WeightTotal, item.TareWeight, item.TotalBoxCount, item.BuildComplete, item.WeighingComplete, false, false);
+    private async Task LoadItemsAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            items = await DataService.GetUldWorkflowAsync(stage);
+            foreach (var item in items)
+            {
+                boxCounts[item.UldId] = item.TotalBoxCount;
+                grossWeights[item.UldId] = item.WeightTotal;
+                tareWeights[item.UldId] = item.TareWeight;
+            }
+        }
+        catch (Exception exception)
+        {
+            errorMessage = $"The worklist could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task CompleteStageAsync(UldOperationsSummary item)
+    {
+        activeUldId = item.UldId;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var operatorName = authenticationState.User.Identity?.Name;
+            if (string.IsNullOrWhiteSpace(operatorName))
+            {
+                throw new InvalidOperationException("The authenticated operator could not be identified.");
+            }
+
+            switch (stage)
+            {
+                case UldWorkflowStage.BuildUp:
+                    await DataService.CompleteBuildUpAsync(
+                        item.UldId,
+                        boxCounts.GetValueOrDefault(item.UldId) ?? throw new InvalidOperationException("Enter the box count."),
+                        operatorName);
+                    break;
+                case UldWorkflowStage.Weighing:
+                    await DataService.CompleteWeighingAsync(
+                        item.UldId,
+                        grossWeights.GetValueOrDefault(item.UldId) ?? throw new InvalidOperationException("Enter the gross weight."),
+                        tareWeights.GetValueOrDefault(item.UldId) ?? throw new InvalidOperationException("Enter the tare weight."),
+                        operatorName);
+                    break;
+                case UldWorkflowStage.Carriage:
+                    await DataService.MarkReadyForShipmentAsync(item.UldId, operatorName);
+                    break;
+            }
+
+            successMessage = $"{item.PhysicalId} was updated successfully.";
+            await LoadItemsAsync();
+        }
+        catch (Exception exception)
+        {
+            errorMessage = $"The ULD could not be updated: {exception.Message}";
+        }
+        finally
+        {
+            activeUldId = null;
+        }
+    }
+
     private static string GetStatus(UldOperationsSummary item) => item.ReadyForShipment ? "Ready" : item.WeighingComplete ? "Weighed" : item.BuildComplete ? "Built" : "To build";
     private static string GetStatusClass(UldOperationsSummary item) => item.ReadyForShipment || item.WeighingComplete ? "status-complete" : "status-pending";
 }

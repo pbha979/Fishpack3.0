@@ -13,20 +13,34 @@ else if (dashboard is not null)
     <section class="dashboard-section"><div class="section-heading"><div><p class="eyebrow">FLIGHT REPORT</p><h2>Readiness by flight</h2></div></div><div class="table-wrap"><table class="table dashboard-table"><thead><tr><th>Flight</th><th>Route</th><th>Departure</th><th>ULDs</th><th>Built</th><th>Readiness</th></tr></thead><tbody>
     @foreach (var flight in dashboard.Flights)
     {
-        var flightUlds = dashboard.ReadyForCarriage.Where(item => item.Flight == flight.FlightNumber).ToList();
-        <tr><td class="primary-cell">@flight.FlightNumber</td><td>@flight.From - @flight.To</td><td>@flight.Departure?.ToString("dd.MM.yyyy HH:mm")</td><td>@flightUlds.Count</td><td>@(flightUlds.Count(item => item.BuildComplete))</td><td><span class="status-pill @(flightUlds.Count > 0 ? "status-complete" : "status-pending")">@(flightUlds.Count > 0 ? "Ready" : "No ready ULDs")</span></td></tr>
+        var totalForFlight = dashboard.BuildUps.Count(item => item.Flight == flight.FlightNumber)
+            + dashboard.ReadyForWeighing.Count(item => item.Flight == flight.FlightNumber)
+            + awaitingCarriage.Count(item => item.Flight == flight.FlightNumber)
+            + dashboard.ReadyForCarriage.Count(item => item.Flight == flight.FlightNumber);
+        var builtForFlight = dashboard.ReadyForWeighing.Count(item => item.Flight == flight.FlightNumber)
+            + awaitingCarriage.Count(item => item.Flight == flight.FlightNumber)
+            + dashboard.ReadyForCarriage.Count(item => item.Flight == flight.FlightNumber);
+        var readyForFlight = dashboard.ReadyForCarriage.Count(item => item.Flight == flight.FlightNumber);
+        <tr><td class="primary-cell">@flight.FlightNumber</td><td>@flight.From - @flight.To</td><td>@flight.Departure?.ToString("dd.MM.yyyy HH:mm")</td><td>@totalForFlight</td><td>@builtForFlight</td><td><span class="status-pill @(readyForFlight > 0 ? "status-complete" : "status-pending")">@(readyForFlight > 0 ? $"{readyForFlight} ready" : "No ready ULDs")</span></td></tr>
     }
     </tbody></table></div></section>
 }
 
 @code {
     private FishPackDashboard? dashboard;
+    private IReadOnlyList<UldOperationsSummary> awaitingCarriage = Array.Empty<UldOperationsSummary>();
     private string? errorMessage;
     private int totalUlds;
     private int builtUlds;
     protected override async Task OnInitializedAsync()
     {
-        try { dashboard = await DataService.GetDashboardAsync(); totalUlds = dashboard.ReadyForCarriage.Count + dashboard.ReadyForWeighing.Count; builtUlds = dashboard.ReadyForCarriage.Count + dashboard.ReadyForWeighing.Count; }
+        try
+        {
+            dashboard = await DataService.GetDashboardAsync();
+            awaitingCarriage = await DataService.GetUldWorkflowAsync(UldWorkflowStage.Carriage);
+            totalUlds = dashboard.BuildUps.Count + dashboard.ReadyForWeighing.Count + awaitingCarriage.Count + dashboard.ReadyForCarriage.Count;
+            builtUlds = dashboard.ReadyForWeighing.Count + awaitingCarriage.Count + dashboard.ReadyForCarriage.Count;
+        }
         catch (Exception exception) { errorMessage = $"The reports could not be loaded: {exception.Message}"; }
     }
 }

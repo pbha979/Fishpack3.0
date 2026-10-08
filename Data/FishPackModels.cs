@@ -78,6 +78,13 @@ public sealed record OtmStagingSummary(
     string Status,
     bool HasAwb);
 
+public enum UldWorkflowStage
+{
+    BuildUp,
+    Weighing,
+    Carriage
+}
+
 public sealed record FishPackDashboard(
     IReadOnlyList<FlightSummary> Flights,
     IReadOnlyList<BuildUpSummary> BuildUps,

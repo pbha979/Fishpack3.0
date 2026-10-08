@@ -43,6 +43,142 @@ public sealed class FishPackDataService
         return new FlightOperations(flight, awbs, ulds);
     }
 
+    public async Task<IReadOnlyList<UldOperationsSummary>> GetUldWorkflowAsync(
+        UldWorkflowStage stage,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        var predicate = stage switch
+        {
+            UldWorkflowStage.BuildUp => "ISNULL(u.BUILD_COMPLATE, 0) = 0",
+            UldWorkflowStage.Weighing => "u.BUILD_COMPLATE = 1 AND ISNULL(u.[Weighing Compleate], 0) = 0",
+            UldWorkflowStage.Carriage => "u.BUILD_COMPLATE = 1 AND u.[Weighing Compleate] = 1 AND ISNULL(u.READY_FOR_SHIPMENT, 0) = 0 AND ISNULL(u.SHIPPED, 0) = 0",
+            _ => throw new ArgumentOutOfRangeException(nameof(stage), stage, "Unknown ULD workflow stage.")
+        };
+
+        var sql = $"""
+            SELECT u.ULD_ID, f.FLIGHT, u.PHYSICAL_ID, u.AwbOnULD, u.DESTINATION,
+                   p.NAME AS PALLET_TYPE, u.CONTOUR, u.WeightTotal_TAG, u.TaraWeight,
+                   u.TotalBoxCount, u.BUILD_COMPLATE, u.[Weighing Compleate],
+                   u.READY_FOR_SHIPMENT, u.SHIPPED
+            FROM dbo.ULD AS u
+            INNER JOIN dbo.FLIGHT AS f ON f.FLIGHT_ID = CONVERT(int, u.FLIGHT_ID)
+            LEFT JOIN dbo.PALLET_TYPES AS p ON p.PALLET_TYPE_ID = CONVERT(int, u.PALLET_TYPE_ID)
+            WHERE ISNULL(u.Archived, 0) = 0 AND ISNULL(f.Archived, 0) = 0 AND {predicate}
+            ORDER BY f.DEADLINE_WEIGHT, f.FLIGHT, u.ULD_ID
+            """;
+
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await ReadUldOperationsAsync(reader, cancellationToken);
+    }
+
+    public Task CompleteBuildUpAsync(
+        int uldId,
+        double totalBoxCount,
+        string completedBy,
+        CancellationToken cancellationToken = default)
+    {
+        if (totalBoxCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(totalBoxCount), "Box count cannot be negative.");
+        }
+
+        const string sql = """
+            UPDATE dbo.ULD
+            SET TotalBoxCount = @totalBoxCount,
+                BUILD_COMPLATE = 1,
+                BuiltBy = @completedBy,
+                BUILD_COMPLATE_TIME = @completedAt,
+                Modified = @completedAt
+            WHERE ULD_ID = @uldId
+              AND ISNULL(Archived, 0) = 0
+              AND ISNULL(BUILD_COMPLATE, 0) = 0
+            """;
+
+        return UpdateUldStageAsync(
+            sql,
+            uldId,
+            completedBy,
+            "The ULD was not found or build-up was already completed.",
+            command => command.Parameters.AddWithValue("@totalBoxCount", totalBoxCount),
+            cancellationToken);
+    }
+
+    public Task CompleteWeighingAsync(
+        int uldId,
+        double grossWeight,
+        double tareWeight,
+        string completedBy,
+        CancellationToken cancellationToken = default)
+    {
+        if (grossWeight <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(grossWeight), "Gross weight must be greater than zero.");
+        }
+
+        if (tareWeight < 0 || tareWeight > grossWeight)
+        {
+            throw new ArgumentOutOfRangeException(nameof(tareWeight), "Tare weight must be between zero and gross weight.");
+        }
+
+        const string sql = """
+            UPDATE dbo.ULD
+            SET WeightTotal_TAG = @grossWeight,
+                TaraWeight = @tareWeight,
+                [Weighing Compleate] = 1,
+                WeighedBy = @completedBy,
+                Weighing_Complate_Time = @completedAt,
+                Weighed_Time = @completedAt,
+                Modified = @completedAt
+            WHERE ULD_ID = @uldId
+              AND ISNULL(Archived, 0) = 0
+              AND BUILD_COMPLATE = 1
+              AND ISNULL([Weighing Compleate], 0) = 0
+            """;
+
+        return UpdateUldStageAsync(
+            sql,
+            uldId,
+            completedBy,
+            "The ULD was not found, build-up is incomplete, or weighing was already completed.",
+            command =>
+            {
+                command.Parameters.AddWithValue("@grossWeight", grossWeight);
+                command.Parameters.AddWithValue("@tareWeight", tareWeight);
+            },
+            cancellationToken);
+    }
+
+    public Task MarkReadyForShipmentAsync(
+        int uldId,
+        string completedBy,
+        CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            UPDATE dbo.ULD
+            SET READY_FOR_SHIPMENT = 1,
+                ControlledBy = @completedBy,
+                Modified = @completedAt
+            WHERE ULD_ID = @uldId
+              AND ISNULL(Archived, 0) = 0
+              AND BUILD_COMPLATE = 1
+              AND [Weighing Compleate] = 1
+              AND ISNULL(READY_FOR_SHIPMENT, 0) = 0
+              AND ISNULL(SHIPPED, 0) = 0
+            """;
+
+        return UpdateUldStageAsync(
+            sql,
+            uldId,
+            completedBy,
+            "The ULD was not found, is not weighed, or was already made ready for shipment.",
+            null,
+            cancellationToken);
+    }
+
     public async Task<OtmAutomationResult> CreateMissingFromOtmAsync(
         string createdBy,
         CancellationToken cancellationToken = default)
@@ -314,10 +450,11 @@ public sealed class FishPackDataService
     private static async Task<List<UldOperationsSummary>> ReadUldsAsync(SqlConnection connection, int flightId, CancellationToken cancellationToken)
     {
         const string sql = """
-            SELECT u.ULD_ID, u.PHYSICAL_ID, u.AwbOnULD, u.DESTINATION, p.NAME AS PALLET_TYPE,
+            SELECT u.ULD_ID, f.FLIGHT, u.PHYSICAL_ID, u.AwbOnULD, u.DESTINATION, p.NAME AS PALLET_TYPE,
                    u.CONTOUR, u.WeightTotal_TAG, u.TaraWeight, u.TotalBoxCount,
                    u.BUILD_COMPLATE, u.[Weighing Compleate], u.READY_FOR_SHIPMENT, u.SHIPPED
             FROM dbo.ULD AS u
+            INNER JOIN dbo.FLIGHT AS f ON f.FLIGHT_ID = CONVERT(int, u.FLIGHT_ID)
             LEFT JOIN dbo.PALLET_TYPES AS p ON p.PALLET_TYPE_ID = CONVERT(int, u.PALLET_TYPE_ID)
             WHERE CONVERT(int, u.FLIGHT_ID) = @flightId
             ORDER BY u.ULD_ID
@@ -326,6 +463,13 @@ public sealed class FishPackDataService
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@flightId", flightId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await ReadUldOperationsAsync(reader, cancellationToken);
+    }
+
+    private static async Task<List<UldOperationsSummary>> ReadUldOperationsAsync(
+        SqlDataReader reader,
+        CancellationToken cancellationToken)
+    {
         var ulds = new List<UldOperationsSummary>();
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -347,6 +491,38 @@ public sealed class FishPackDataService
         }
 
         return ulds;
+    }
+
+    private async Task UpdateUldStageAsync(
+        string sql,
+        int uldId,
+        string completedBy,
+        string concurrencyError,
+        Action<SqlCommand>? addParameters,
+        CancellationToken cancellationToken)
+    {
+        if (uldId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(uldId), "ULD ID must be greater than zero.");
+        }
+
+        if (string.IsNullOrWhiteSpace(completedBy))
+        {
+            throw new ArgumentException("The operator name is required.", nameof(completedBy));
+        }
+
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@uldId", uldId);
+        command.Parameters.AddWithValue("@completedBy", completedBy.Trim());
+        command.Parameters.AddWithValue("@completedAt", DateTime.UtcNow);
+        addParameters?.Invoke(command);
+
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+        {
+            throw new InvalidOperationException(concurrencyError);
+        }
     }
 
     private static async Task<List<FlightSummary>> ReadFlightsAsync(SqlConnection connection, CancellationToken cancellationToken)
@@ -418,7 +594,7 @@ public sealed class FishPackDataService
     {
         var readinessPredicate = viewName == "QryRedyForWeighing"
             ? "u.[Weighing Compleate] = 0 AND u.BUILD_COMPLATE = 1"
-            : "u.[Weighing Compleate] = 1 AND u.BUILD_COMPLATE = 1";
+            : "u.[Weighing Compleate] = 1 AND u.BUILD_COMPLATE = 1 AND u.READY_FOR_SHIPMENT = 1 AND ISNULL(u.SHIPPED, 0) = 0";
 
         var sql = $"""
             SELECT u.ULD_ID, f.FLIGHT, u.PHYSICAL_ID, p.NAME AS PALLET_TYPES_NAME,

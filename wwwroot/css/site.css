@@ -36,6 +36,8 @@ a, .btn-link {
 .workspace-tabs a { color: #68737d; padding: .65rem .1rem; text-decoration: none; }
 .workspace-tabs a.active { border-bottom: 3px solid #2785a6; color: #19313b; font-weight: 700; }
 .worklist-section { margin-top: .5rem; }
+.workflow-number { min-width: 6.5rem; width: 7rem; }
+.weight-inputs { display: flex; gap: .4rem; }
 .starter-link { display: none; }
 
 .eyebrow {
