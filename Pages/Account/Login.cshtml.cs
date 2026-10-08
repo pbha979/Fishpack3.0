@@ -37,7 +37,17 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        var result = await users.ValidateCredentialsAsync(Input.UserName, Input.Password);
+        UserSignInResult result;
+        try
+        {
+            result = await users.ValidateCredentialsAsync(Input.UserName, Input.Password);
+        }
+        catch (InvalidOperationException exception)
+        {
+            ErrorMessage = exception.Message;
+            return Page();
+        }
+
         if (!result.Succeeded || result.User is null)
         {
             ErrorMessage = result.Status switch

@@ -18,12 +18,17 @@ public sealed class UserService
 
     private readonly string connectionString;
     private readonly IPasswordHasher<ApplicationUser> passwordHasher;
+    private readonly ILogger<UserService> logger;
 
-    public UserService(IConfiguration configuration, IPasswordHasher<ApplicationUser> passwordHasher)
+    public UserService(
+        IConfiguration configuration,
+        IPasswordHasher<ApplicationUser> passwordHasher,
+        ILogger<UserService> logger)
     {
         connectionString = configuration.GetConnectionString("FishPack")
             ?? throw new InvalidOperationException("The FishPack SQL connection string is not configured.");
         this.passwordHasher = passwordHasher;
+        this.logger = logger;
     }
 
     public async Task EnsureSchemaAsync(CancellationToken cancellationToken = default)
@@ -127,7 +132,7 @@ public sealed class UserService
             return UserSignInResult.Failed(SignInStatus.LockedOut);
         }
 
-        var verification = passwordHasher.VerifyHashedPassword(stored.User, stored.PasswordHash, password);
+        var verification = VerifyPassword(stored.User, stored.PasswordHash, password);
         if (verification == PasswordVerificationResult.Failed)
         {
             var lockedOut = await RegisterFailedAttemptAsync(connection, stored.User, now, cancellationToken);
@@ -377,13 +382,13 @@ public sealed class UserService
             throw new InvalidOperationException("Brukeren ble ikke funnet eller er deaktivert.");
         }
 
-        if (passwordHasher.VerifyHashedPassword(stored.User, stored.PasswordHash, currentPassword)
+        if (VerifyPassword(stored.User, stored.PasswordHash, currentPassword)
             == PasswordVerificationResult.Failed)
         {
             throw new InvalidOperationException("Nåværende passord er feil.");
         }
 
-        if (passwordHasher.VerifyHashedPassword(stored.User, stored.PasswordHash, newPassword)
+        if (VerifyPassword(stored.User, stored.PasswordHash, newPassword)
             != PasswordVerificationResult.Failed)
         {
             throw new InvalidOperationException("Det nye passordet må være forskjellig fra det nåværende.");
@@ -440,6 +445,24 @@ public sealed class UserService
         var placeholder = new ApplicationUser(
             0, userName, userName, UserRoles.Operator, true, false, 0, null, null, DateTime.UtcNow, "System", null, null);
         return passwordHasher.HashPassword(placeholder, password);
+    }
+
+    private PasswordVerificationResult VerifyPassword(
+        ApplicationUser user,
+        string passwordHash,
+        string password)
+    {
+        try
+        {
+            return passwordHasher.VerifyHashedPassword(user, passwordHash, password);
+        }
+        catch (FormatException exception)
+        {
+            logger.LogError(exception, "The stored password hash for user '{UserName}' is invalid.", user.UserName);
+            throw new InvalidOperationException(
+                "Passorddataene for brukeren er ugyldige. Kontakt en administrator.",
+                exception);
+        }
     }
 
     private static async Task<bool> IsCurrentlyActiveAdministratorAsync(
