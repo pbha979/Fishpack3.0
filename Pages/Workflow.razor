@@ -1,0 +1,68 @@
+@page "/buildup"
+@page "/weighing"
+@page "/carriage"
+@using FishPack3._0.Data
+@inject FishPackDataService DataService
+@inject NavigationManager Navigation
+
+@{
+    var mode = Navigation.Uri.Contains("/weighing") ? "weighing" : Navigation.Uri.Contains("/carriage") ? "carriage" : "buildup";
+    var title = mode == "weighing" ? "Weighing queue" : mode == "carriage" ? "Ready for carriage" : "Build-up queue";
+    var label = mode == "weighing" ? "WEIGHING" : mode == "carriage" ? "CARRIAGE" : "BUILD-UP";
+}
+
+<PageTitle>@title</PageTitle>
+
+<div class="dashboard-header">
+    <div><p class="eyebrow">OPERATIONS / @label</p><h1>@title</h1><p class="dashboard-intro">Live worklist for ULD handling and handover.</p></div>
+    <a class="btn btn-outline-secondary" href="/">Operations overview</a>
+</div>
+
+<div class="workspace-tabs">
+    <a class="@(mode == "buildup" ? "active" : "")" href="/buildup">Build-up</a>
+    <a class="@(mode == "weighing" ? "active" : "")" href="/weighing">Weighing</a>
+    <a class="@(mode == "carriage" ? "active" : "")" href="/carriage">Carriage</a>
+</div>
+
+@if (isLoading)
+{
+    <p class="text-muted">Loading worklist...</p>
+}
+else if (errorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+else if (items is not null)
+{
+    <section class="dashboard-section worklist-section">
+        <div class="section-heading"><div><p class="eyebrow">CURRENT QUEUE</p><h2>@items.Count ULDs</h2></div><span class="section-count">Updated @DateTime.Now.ToString("HH:mm")</span></div>
+        <div class="table-wrap"><table class="table dashboard-table"><thead><tr><th>ULD</th><th>Flight</th><th>Destination</th><th>Pallet</th><th>Boxes</th><th>Weight</th><th>Status</th></tr></thead><tbody>
+            @foreach (var item in items)
+            {
+                <tr><td class="primary-cell">@item.PhysicalId</td><td>@item.Flight</td><td>@item.Destination</td><td>@item.PalletType</td><td>@item.TotalBoxCount?.ToString("0")</td><td>@item.WeightTotal?.ToString("0.0") kg</td><td><span class="status-pill @GetStatusClass(item)">@GetStatus(item)</span></td></tr>
+            }
+        </tbody></table></div>
+    </section>
+}
+
+@code {
+    private IReadOnlyList<UldOperationsSummary>? items;
+    private string? errorMessage;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var dashboard = await DataService.GetDashboardAsync();
+            var mode = Navigation.Uri.Contains("/weighing") ? "weighing" : Navigation.Uri.Contains("/carriage") ? "carriage" : "buildup";
+            items = mode == "weighing" ? dashboard.ReadyForWeighing.Select(ToOperations).ToList() : mode == "carriage" ? dashboard.ReadyForCarriage.Select(ToOperations).ToList() : dashboard.BuildUps.Select(item => new UldOperationsSummary(item.UldId, item.Flight, item.PhysicalId, item.Awb, item.Destination, item.PalletType, string.Empty, null, null, item.TotalBoxCount, item.BuildComplete, false, false, false)).ToList();
+        }
+        catch (Exception exception) { errorMessage = $"The worklist could not be loaded: {exception.Message}"; }
+        finally { isLoading = false; }
+    }
+
+    private static UldOperationsSummary ToOperations(UldReadinessSummary item) => new(item.UldId, item.Flight, item.PhysicalId, string.Empty, string.Empty, item.PalletType, string.Empty, item.WeightTotal, item.TareWeight, item.TotalBoxCount, item.BuildComplete, item.WeighingComplete, false, false);
+    private static string GetStatus(UldOperationsSummary item) => item.ReadyForShipment ? "Ready" : item.WeighingComplete ? "Weighed" : item.BuildComplete ? "Built" : "To build";
+    private static string GetStatusClass(UldOperationsSummary item) => item.ReadyForShipment || item.WeighingComplete ? "status-complete" : "status-pending";
+}

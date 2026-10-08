@@ -1,0 +1,49 @@
+﻿<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">FishPack3.0</a>
+        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+    </div>
+</div>
+
+<div class="@NavMenuCssClass" @onclick="ToggleNavMenu">
+    <nav class="flex-column">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="oi oi-home" aria-hidden="true"></span> Home
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="flights">
+                <span class="oi oi-briefcase" aria-hidden="true"></span> Flight workspace
+            </NavLink>
+        </div>
+        <div class="nav-item px-3"><NavLink class="nav-link" href="buildup"><span class="oi oi-wrench" aria-hidden="true"></span> Build-up</NavLink></div>
+        <div class="nav-item px-3"><NavLink class="nav-link" href="weighing"><span class="oi oi-dashboard" aria-hidden="true"></span> Weighing</NavLink></div>
+        <div class="nav-item px-3"><NavLink class="nav-link" href="carriage"><span class="oi oi-transfer" aria-hidden="true"></span> Carriage</NavLink></div>
+        <div class="nav-item px-3"><NavLink class="nav-link" href="reports"><span class="oi oi-bar-chart" aria-hidden="true"></span> Reports</NavLink></div>
+        <div class="nav-item px-3"><NavLink class="nav-link" href="otm"><span class="oi oi-cloud-download" aria-hidden="true"></span> OTM staging</NavLink></div>
+        <div class="nav-item px-3 starter-link">
+            <NavLink class="nav-link" href="counter">
+                <span class="oi oi-plus" aria-hidden="true"></span> Counter
+            </NavLink>
+        </div>
+        <div class="nav-item px-3 starter-link">
+            <NavLink class="nav-link" href="fetchdata">
+                <span class="oi oi-list-rich" aria-hidden="true"></span> Fetch data
+            </NavLink>
+        </div>
+    </nav>
+</div>
+
+@code {
+    private bool collapseNavMenu = true;
+
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+}

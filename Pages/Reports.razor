@@ -1,0 +1,32 @@
+@page "/reports"
+@using FishPack3._0.Data
+@inject FishPackDataService DataService
+
+<PageTitle>Reports</PageTitle>
+<div class="dashboard-header"><div><p class="eyebrow">REPORTING</p><h1>Operational reports</h1><p class="dashboard-intro">A concise view of flight readiness and ULD progress.</p></div><a class="btn btn-outline-secondary" href="/">Operations overview</a></div>
+
+@if (dashboard is null && errorMessage is null) { <p class="text-muted">Loading reports...</p> }
+else if (errorMessage is not null) { <div class="alert alert-danger" role="alert">@errorMessage</div> }
+else if (dashboard is not null)
+{
+    <div class="metric-grid"><div class="metric-card metric-card-blue"><span>Flights</span><strong>@dashboard.Flights.Count</strong></div><div class="metric-card metric-card-teal"><span>ULDs in data</span><strong>@totalUlds</strong></div><div class="metric-card metric-card-amber"><span>Build complete</span><strong>@builtUlds</strong></div><div class="metric-card metric-card-green"><span>Carriage ready</span><strong>@dashboard.ReadyForCarriage.Count</strong></div></div>
+    <section class="dashboard-section"><div class="section-heading"><div><p class="eyebrow">FLIGHT REPORT</p><h2>Readiness by flight</h2></div></div><div class="table-wrap"><table class="table dashboard-table"><thead><tr><th>Flight</th><th>Route</th><th>Departure</th><th>ULDs</th><th>Built</th><th>Readiness</th></tr></thead><tbody>
+    @foreach (var flight in dashboard.Flights)
+    {
+        var flightUlds = dashboard.ReadyForCarriage.Where(item => item.Flight == flight.FlightNumber).ToList();
+        <tr><td class="primary-cell">@flight.FlightNumber</td><td>@flight.From - @flight.To</td><td>@flight.Departure?.ToString("dd.MM.yyyy HH:mm")</td><td>@flightUlds.Count</td><td>@(flightUlds.Count(item => item.BuildComplete))</td><td><span class="status-pill @(flightUlds.Count > 0 ? "status-complete" : "status-pending")">@(flightUlds.Count > 0 ? "Ready" : "No ready ULDs")</span></td></tr>
+    }
+    </tbody></table></div></section>
+}
+
+@code {
+    private FishPackDashboard? dashboard;
+    private string? errorMessage;
+    private int totalUlds;
+    private int builtUlds;
+    protected override async Task OnInitializedAsync()
+    {
+        try { dashboard = await DataService.GetDashboardAsync(); totalUlds = dashboard.ReadyForCarriage.Count + dashboard.ReadyForWeighing.Count; builtUlds = dashboard.ReadyForCarriage.Count + dashboard.ReadyForWeighing.Count; }
+        catch (Exception exception) { errorMessage = $"The reports could not be loaded: {exception.Message}"; }
+    }
+}

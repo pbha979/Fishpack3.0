@@ -1,0 +1,10 @@
+@page "/otm"
+@using FishPack3._0.Data
+@inject FishPackDataService DataService
+
+<PageTitle>OTM staging</PageTitle>
+<div class="dashboard-header"><div><p class="eyebrow">IMPORT / OTM</p><h1>OTM staging review</h1><p class="dashboard-intro">Review transportation orders before creating operational records.</p></div><a class="btn btn-outline-secondary" href="/">Operations overview</a></div>
+@if (isLoading) { <p class="text-muted">Loading OTM records...</p> }
+else if (errorMessage is not null) { <div class="alert alert-danger" role="alert">@errorMessage</div> }
+else { <div class="metric-grid"><div class="metric-card metric-card-blue"><span>Staged rows</span><strong>@rows.Count</strong></div><div class="metric-card metric-card-teal"><span>With AWB</span><strong>@rows.Count(item => item.HasAwb)</strong></div><div class="metric-card metric-card-amber"><span>Needs review</span><strong>@rows.Count(item => !item.HasAwb)</strong></div></div><section class="dashboard-section"><div class="section-heading"><div><p class="eyebrow">SOURCE DATA</p><h2>Latest OTM records</h2></div></div><div class="table-wrap"><table class="table dashboard-table"><thead><tr><th>PK</th><th>AWB</th><th>Order</th><th>Destination</th><th>Routing</th><th>Start</th><th>Review</th></tr></thead><tbody>@foreach (var row in rows) { <tr><td class="primary-cell">@row.Pk</td><td>@row.AwbNumber</td><td>@row.OrderNumber</td><td>@row.Destination</td><td>@row.Routing</td><td>@row.StartTime</td><td><span class="status-pill @(row.HasAwb ? "status-complete" : "status-pending")">@(row.HasAwb ? "Eligible" : "Missing AWB")</span></td></tr> }</tbody></table></div></section> }
+@code { private IReadOnlyList<OtmStagingSummary> rows = Array.Empty<OtmStagingSummary>(); private string? errorMessage; private bool isLoading = true; protected override async Task OnInitializedAsync() { try { rows = await DataService.GetOtmStagingAsync(); } catch (Exception exception) { errorMessage = $"OTM staging could not be loaded: {exception.Message}"; } finally { isLoading = false; } } }

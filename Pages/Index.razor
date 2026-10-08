@@ -1,0 +1,174 @@
+﻿@page "/"
+@using FishPack3._0.Data
+@inject FishPackDataService DataService
+
+<PageTitle>Operations dashboard</PageTitle>
+
+<div class="dashboard-header">
+	<div>
+		<p class="eyebrow">FISHPACK OPERATIONS</p>
+		<h1>Build-up control room</h1>
+		<p class="dashboard-intro">Monitor flights, ULD preparation, weighing and carriage readiness.</p>
+	</div>
+	<div class="dashboard-actions">
+		<button class="btn btn-primary" @onclick="CreateFromOtmAsync" disabled="@isLoading || isAutomating">@(isAutomating ? "Creating..." : "Create from OTM")</button>
+		<button class="btn btn-outline-secondary" @onclick="RefreshAsync" disabled="@isLoading || isAutomating">@(isLoading ? "Refreshing..." : "Refresh")</button>
+	</div>
+</div>
+
+@if (automationMessage is not null)
+{
+	<div class="alert alert-success" role="status">@automationMessage</div>
+}
+
+@if (errorMessage is not null)
+{
+	<div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+else if (isLoading)
+{
+	<p class="text-muted">Loading operational data...</p>
+}
+else if (dashboard is not null)
+{
+	<div class="metric-grid">
+		<div class="metric-card metric-card-blue">
+			<span>Active flights</span>
+			<strong>@dashboard.Flights.Count</strong>
+		</div>
+		<div class="metric-card metric-card-amber">
+			<span>Build-up queue</span>
+			<strong>@dashboard.BuildUps.Count(item => !item.BuildComplete)</strong>
+		</div>
+		<div class="metric-card metric-card-teal">
+			<span>Awaiting weighing</span>
+			<strong>@dashboard.ReadyForWeighing.Count</strong>
+		</div>
+		<div class="metric-card metric-card-green">
+			<span>Ready for carriage</span>
+			<strong>@dashboard.ReadyForCarriage.Count</strong>
+		</div>
+	</div>
+
+	<section class="dashboard-section">
+		<div class="section-heading">
+			<div>
+				<p class="eyebrow">SCHEDULE</p>
+				<h2>Flights</h2>
+			</div>
+			<span class="section-count">@dashboard.Flights.Count active</span>
+		</div>
+		<div class="table-wrap">
+			<table class="table dashboard-table">
+				<thead>
+					<tr><th>Flight</th><th>Departure</th><th>Route</th><th>Airline</th><th>Weight deadline</th></tr>
+				</thead>
+				<tbody>
+					@foreach (var flight in dashboard.Flights.Take(12))
+					{
+						<tr>
+							<td class="primary-cell">@flight.FlightNumber</td>
+							<td>@(flight.Departure?.ToString("dd.MM.yyyy HH:mm") ?? "-")</td>
+							<td>@flight.From - @flight.To</td>
+							<td>@flight.Airline</td>
+							<td>@flight.DeadlineWeight</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+
+	<div class="dashboard-columns">
+		<section class="dashboard-section">
+			<div class="section-heading">
+				<div><p class="eyebrow">BUILD-UP</p><h2>ULD queue</h2></div>
+				<span class="section-count">@dashboard.BuildUps.Count</span>
+			</div>
+			<div class="compact-list">
+				@foreach (var item in dashboard.BuildUps.Take(8))
+				{
+					<div class="list-row">
+						<div><strong>@item.PhysicalId</strong><span>@item.Flight · @item.Destination</span></div>
+						<span class="status-pill @(item.BuildComplete ? "status-complete" : "status-pending")">@(item.BuildComplete ? "Built" : "To build")</span>
+					</div>
+				}
+			</div>
+		</section>
+
+		<section class="dashboard-section">
+			<div class="section-heading">
+				<div><p class="eyebrow">HANDOVER</p><h2>Ready for carriage</h2></div>
+				<span class="section-count">@dashboard.ReadyForCarriage.Count</span>
+			</div>
+			<div class="compact-list">
+				@foreach (var item in dashboard.ReadyForCarriage.Take(8))
+				{
+					<div class="list-row">
+						<div><strong>@item.PhysicalId</strong><span>@item.Flight · @item.PalletType</span></div>
+						<span class="weight-value">@(item.WeightTotal?.ToString("0.0") ?? "-") kg</span>
+					</div>
+				}
+			</div>
+		</section>
+	</div>
+}
+
+@code {
+	private FishPackDashboard? dashboard;
+	private string? errorMessage;
+	private string? automationMessage;
+	private bool isLoading;
+	private bool isAutomating;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadDashboardAsync();
+	}
+
+	private async Task RefreshAsync()
+	{
+		await LoadDashboardAsync();
+	}
+
+	private async Task CreateFromOtmAsync()
+	{
+		isAutomating = true;
+		automationMessage = null;
+		errorMessage = null;
+
+		try
+		{
+			var result = await DataService.CreateMissingFromOtmAsync("Web user");
+			automationMessage = $"Created {result.FlightsCreated} flights, {result.AwbsCreated} AWBs and {result.UldsCreated} ULDs. Skipped {result.ExistingAwbsSkipped} existing AWBs and {result.RowsSkippedWithoutAwb} OTM rows without an AWB.";
+			await LoadDashboardAsync();
+		}
+		catch (Exception exception)
+		{
+			errorMessage = $"OTM automation failed: {exception.Message}";
+		}
+		finally
+		{
+			isAutomating = false;
+		}
+	}
+
+	private async Task LoadDashboardAsync()
+	{
+		isLoading = true;
+		errorMessage = null;
+
+		try
+		{
+			dashboard = await DataService.GetDashboardAsync();
+		}
+		catch (Exception exception)
+		{
+			errorMessage = $"The operational database could not be loaded: {exception.Message}";
+		}
+		finally
+		{
+			isLoading = false;
+		}
+	}
+}

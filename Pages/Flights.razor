@@ -1,0 +1,111 @@
+@page "/flights"
+@using FishPack3._0.Data
+@inject FishPackDataService DataService
+
+<PageTitle>Flight workspace</PageTitle>
+
+<div class="dashboard-header">
+    <div>
+        <p class="eyebrow">FLIGHT WORKSPACE</p>
+        <h1>Flight operations</h1>
+        <p class="dashboard-intro">Review AWBs and ULD progress for an active flight.</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="/">Back to dashboard</a>
+</div>
+
+@if (isLoading)
+{
+    <p class="text-muted">Loading flights...</p>
+}
+else if (errorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+else
+{
+    <section class="dashboard-section flight-picker">
+        <label for="flight-select">Flight</label>
+        <select id="flight-select" class="form-select" value="@selectedFlightId" @onchange="SelectFlightAsync">
+            <option value="0">Select an active flight</option>
+            @foreach (var flight in flights)
+            {
+                <option value="@flight.FlightId">@flight.FlightNumber · @flight.From - @flight.To · @flight.Departure?.ToString("dd.MM.yyyy HH:mm")</option>
+            }
+        </select>
+    </section>
+
+    @if (operations is not null)
+    {
+        <section class="flight-summary">
+            <div><p class="eyebrow">SELECTED FLIGHT</p><h2>@operations.Flight.FlightNumber</h2><p>@operations.Flight.Airline · @operations.Flight.From to @operations.Flight.To</p></div>
+            <div class="flight-summary-meta"><span>Departure</span><strong>@operations.Flight.Departure?.ToString("dd.MM.yyyy HH:mm")</strong></div>
+            <div class="flight-summary-meta"><span>Deadline</span><strong>@operations.Flight.DeadlineWeight</strong></div>
+        </section>
+
+        <div class="metric-grid">
+            <div class="metric-card metric-card-blue"><span>AWBs</span><strong>@operations.Awbs.Count</strong></div>
+            <div class="metric-card metric-card-amber"><span>ULDs</span><strong>@operations.Ulds.Count</strong></div>
+            <div class="metric-card metric-card-teal"><span>Built</span><strong>@operations.Ulds.Count(item => item.BuildComplete)</strong></div>
+            <div class="metric-card metric-card-green"><span>Ready</span><strong>@operations.Ulds.Count(item => item.ReadyForShipment)</strong></div>
+        </div>
+
+        <div class="dashboard-columns">
+            <section class="dashboard-section">
+                <div class="section-heading"><div><p class="eyebrow">SHIPMENT ORDERS</p><h2>AWBs</h2></div><span class="section-count">@operations.Awbs.Count</span></div>
+                <div class="table-wrap"><table class="table dashboard-table"><thead><tr><th>AWB</th><th>Order</th><th>Destination</th><th>Boxes</th></tr></thead><tbody>
+                    @foreach (var awb in operations.Awbs)
+                    {
+                        <tr><td class="primary-cell">@awb.AwbNumber</td><td>@awb.OrderNumber</td><td>@awb.Destination</td><td>@awb.AmountOrdered?.ToString("0")</td></tr>
+                    }
+                </tbody></table></div>
+            </section>
+
+            <section class="dashboard-section">
+                <div class="section-heading"><div><p class="eyebrow">UNIT LOAD DEVICES</p><h2>ULD progress</h2></div><span class="section-count">@operations.Ulds.Count</span></div>
+                <div class="compact-list">
+                    @foreach (var uld in operations.Ulds)
+                    {
+                        <div class="list-row uld-row"><div><strong>@uld.PhysicalId</strong><span>@uld.PalletType · @uld.Destination · @uld.TotalBoxCount?.ToString("0") boxes</span></div><span class="status-pill @(uld.ReadyForShipment ? "status-complete" : "status-pending")">@(uld.ReadyForShipment ? "Ready" : uld.WeighingComplete ? "Weighed" : uld.BuildComplete ? "Built" : "To build")</span></div>
+                    }
+                </div>
+            </section>
+        </div>
+    }
+}
+
+@code {
+    private IReadOnlyList<FlightSummary> flights = Array.Empty<FlightSummary>();
+    private FlightOperations? operations;
+    private string? errorMessage;
+    private bool isLoading;
+    private int selectedFlightId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+        try
+        {
+            var dashboard = await DataService.GetDashboardAsync();
+            flights = dashboard.Flights;
+        }
+        catch (Exception exception)
+        {
+            errorMessage = $"The operational database could not be loaded: {exception.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SelectFlightAsync(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out selectedFlightId) || selectedFlightId == 0)
+        {
+            operations = null;
+            return;
+        }
+
+        operations = await DataService.GetFlightOperationsAsync(selectedFlightId);
+    }
+}

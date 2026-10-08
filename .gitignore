@@ -1,0 +1,27 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+publish/
+
+# .NET tooling and test output
+.dotnet/
+TestResults/
+coverage/
+*.trx
+
+# User-specific configuration and secrets
+appsettings.Local.json
+secrets.json
+
+# Operating system files
+.DS_Store
+Thumbs.db
